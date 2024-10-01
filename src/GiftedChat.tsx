@@ -7,7 +7,6 @@ import React, {
   useCallback,
   MutableRefObject,
 } from 'react'
-import 'react-native-get-random-values' // NOTE: FOR "uuid" SUPPORT
 import {
   ActionSheetOptions,
   ActionSheetProvider,
@@ -34,7 +33,7 @@ import Bubble from './Bubble'
 import { Composer, ComposerProps } from './Composer'
 import { MAX_COMPOSER_HEIGHT, MIN_COMPOSER_HEIGHT, TEST_ID } from './Constant'
 import { Day, DayProps } from './Day'
-import GiftedAvatar from './GiftedAvatar'
+import { GiftedAvatar } from './GiftedAvatar'
 import { GiftedChatContext } from './GiftedChatContext'
 import { InputToolbar, InputToolbarProps } from './InputToolbar'
 import { LoadEarlier, LoadEarlierProps } from './LoadEarlier'
@@ -76,6 +75,8 @@ export interface GiftedChatProps<TMessage extends IMessage = IMessage> {
   messages?: TMessage[]
   /* Typing Indicator state */
   isTyping?: boolean
+  /* Controls whether or not to show user.name property in the message bubble */
+  renderUsernameOnMessage?: boolean
   /* Messages container style */
   messagesContainerStyle?: StyleProp<ViewStyle>
   /* Input text; default is undefined, but if specified, it will override GiftedChat's internal state */
@@ -114,6 +115,8 @@ export interface GiftedChatProps<TMessage extends IMessage = IMessage> {
   imageProps?: Message<TMessage>['props']
   /* Extra props to be passed to the MessageImage's Lightbox */
   lightboxProps?: LightboxProps
+  /* Distance of the chat from the bottom of the screen (e.g. useful if you display a tab bar); default is 0 */
+  bottomOffset?: number
   /* Minimum height of the input toolbar; default is 44 */
   minInputToolbarHeight?: number
   /* Extra props to be passed to the messages <ListView>; some props can't be overridden, see the code in MessageContainer.render() for details */
@@ -121,7 +124,7 @@ export interface GiftedChatProps<TMessage extends IMessage = IMessage> {
   /*  Extra props to be passed to the <TextInput> */
   textInputProps?: object
   /* Determines whether the keyboard should stay visible after a tap; see <ScrollView> docs */
-  keyboardShouldPersistTaps?: boolean
+  keyboardShouldPersistTaps?: 'always' | 'never' | 'handled'
   /* Max message composer TextInput length */
   maxInputLength?: number
   /* Force send button */
@@ -144,6 +147,8 @@ export interface GiftedChatProps<TMessage extends IMessage = IMessage> {
   /* infinite scroll up when reach the top of messages container, automatically call onLoadEarlier function if exist */
   infiniteScroll?: boolean
   timeTextStyle?: LeftRightStyle<TextStyle>
+  /** If you use translucent status bar on Android, set this option to true. Ignored on iOS. */
+  isStatusBarTranslucentAndroid?: boolean
   /* Custom action sheet */
   actionSheet?(): {
     showActionSheetWithOptions: (
@@ -215,7 +220,7 @@ export interface GiftedChatProps<TMessage extends IMessage = IMessage> {
   /* Callback when the input text changes */
   onInputTextChanged?(text: string): void
   /* Custom parse patterns for react-native-parsed-text used to linking message content (like URLs and phone numbers) */
-  parsePatterns?: (linkStyle: TextStyle) => []
+  parsePatterns?: (linkStyle?: TextStyle) => { type?: string, pattern?: RegExp, style?: StyleProp<TextStyle> | object, onPress?: unknown, renderText?: unknown }[]
   onQuickReply?(replies: Reply[]): void
   renderQuickReplies?(
     quickReplies: QuickRepliesProps<TMessage>,
@@ -245,6 +250,7 @@ function GiftedChat<TMessage extends IMessage = IMessage> (
     textInputProps,
     renderChatFooter = null,
     renderInputToolbar = null,
+    bottomOffset = 0,
     keyboardShouldPersistTaps = Platform.select({
       ios: 'never',
       android: 'always',
@@ -255,6 +261,7 @@ function GiftedChat<TMessage extends IMessage = IMessage> (
     inverted = true,
     minComposerHeight = MIN_COMPOSER_HEIGHT,
     maxComposerHeight = MAX_COMPOSER_HEIGHT,
+    isStatusBarTranslucentAndroid,
   } = props
 
   const actionSheetRef = useRef<ActionSheetProviderRef>(null)
@@ -278,7 +285,7 @@ function GiftedChat<TMessage extends IMessage = IMessage> (
   const [text, setText] = useState<string | undefined>(() => props.text || '')
   const [isTypingDisabled, setIsTypingDisabled] = useState<boolean>(false)
 
-  const keyboard = useAnimatedKeyboard()
+  const keyboard = useAnimatedKeyboard({ isStatusBarTranslucentAndroid })
   const trackingKeyboardMovement = useSharedValue(false)
   const debounceEnableTypingTimeoutId = useRef<ReturnType<typeof setTimeout>>()
   const insets = useSafeAreaInsets()
@@ -557,9 +564,10 @@ function GiftedChat<TMessage extends IMessage = IMessage> (
         if (isKeyboardMovingUp !== trackingKeyboardMovement.value) {
           trackingKeyboardMovement.value = isKeyboardMovingUp
           keyboardOffsetBottom.value = withTiming(
-            isKeyboardMovingUp ? insets.bottom : 0,
+            isKeyboardMovingUp ? insets.bottom + bottomOffset : 0,
             {
-              duration: 400,
+              // If `bottomOffset` exists, we change the duration to a smaller value to fix the delay in the keyboard animation speed
+              duration: bottomOffset ? 150 : 400,
             }
           )
 
