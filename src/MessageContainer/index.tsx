@@ -1,12 +1,14 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   View,
   TouchableOpacity,
   Text,
   Platform,
   LayoutChangeEvent,
+  ListRenderItemInfo,
+  FlatList,
+  CellRendererProps,
 } from 'react-native'
-import { FlashList, ListRenderItemInfo } from '@shopify/flash-list'
 import Animated, { runOnJS, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { ReanimatedScrollEvent } from 'react-native-reanimated/lib/typescript/hook/commonTypes'
 import DayAnimated from './components/DayAnimated'
@@ -21,10 +23,11 @@ import { ItemProps } from './components/Item/types'
 import { warning } from '../logging'
 import stylesCommon from '../styles'
 import styles from './styles'
+import { isSameDay } from '../utils'
 
 export * from './types'
 
-const AnimatedFlashList = Animated.createAnimatedComponent(FlashList)
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList)
 
 function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageContainerProps<TMessage>) {
   const {
@@ -58,8 +61,6 @@ function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageC
     opacity: scrollToBottomOpacity.value,
   }), [scrollToBottomOpacity])
 
-  const [hasScrolled, setHasScrolled] = useState(false)
-
   const daysPositions = useSharedValue<DaysPositions>({})
   const listHeight = useSharedValue(0)
   const scrolledY = useSharedValue(0)
@@ -79,7 +80,7 @@ function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageC
   }, [renderFooterProp, renderTypingIndicator, props])
 
   const renderLoadEarlier = useCallback(() => {
-    if (loadEarlier === true) {
+    if (loadEarlier) {
       if (renderLoadEarlierProp)
         return renderLoadEarlierProp(props)
 
@@ -112,51 +113,31 @@ function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageC
 
     const duration = 250
 
-    if (inverted) {
-      if (contentOffsetY > scrollToBottomOffset!) {
-        setIsScrollToBottomVisible(true)
-        scrollToBottomOpacity.value = withTiming(1, { duration })
-      } else {
-        scrollToBottomOpacity.value = withTiming(0, { duration }, isFinished => {
-          if (isFinished)
-            runOnJS(setIsScrollToBottomVisible)(false)
-        })
-      }
-    } else if (
-      contentOffsetY < scrollToBottomOffset! &&
-      contentSizeHeight - layoutMeasurementHeight > scrollToBottomOffset!
-    ) {
+    const makeScrollToBottomVisible = () => {
       setIsScrollToBottomVisible(true)
       scrollToBottomOpacity.value = withTiming(1, { duration })
-    } else {
+    }
+
+    const makeScrollToBottomHidden = () => {
       scrollToBottomOpacity.value = withTiming(0, { duration }, isFinished => {
         if (isFinished)
           runOnJS(setIsScrollToBottomVisible)(false)
       })
     }
 
-    setHasScrolled(true)
+    if (inverted)
+      if (contentOffsetY > scrollToBottomOffset!)
+        makeScrollToBottomVisible()
+      else
+        makeScrollToBottomHidden()
+    else if (
+      contentOffsetY < scrollToBottomOffset! &&
+      contentSizeHeight - layoutMeasurementHeight > scrollToBottomOffset!
+    )
+      makeScrollToBottomVisible()
+    else
+      makeScrollToBottomHidden()
   }, [handleOnScrollProp, inverted, scrollToBottomOffset, scrollToBottomOpacity])
-
-  const handleLayoutDayWrapper = useCallback((ref: unknown, id: string | number, createdAt: number) => {
-    setTimeout(() => { // do not delete "setTimeout". It's necessary for get correct layout.
-      const itemLayout = forwardRef?.current?.recyclerlistview_unsafe?.getLayout(messages.findIndex(m => m._id === id))
-
-      if (ref && itemLayout) {
-        daysPositions.value = {
-          ...daysPositions.value,
-          [id]: {
-            ...itemLayout,
-            createdAt,
-          },
-        }
-      } else if (daysPositions.value[id] != null) {
-        const nextDaysPositions = { ...daysPositions.value }
-        delete nextDaysPositions[id]
-        daysPositions.value = nextDaysPositions
-      }
-    }, 100)
-  }, [messages, daysPositions, forwardRef])
 
   const renderItem = useCallback(({ item, index }: ListRenderItemInfo<unknown>): React.ReactElement | null => {
     const messageItem = item as TMessage
@@ -182,25 +163,24 @@ function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageC
       const nextMessage =
         (inverted ? messages[index - 1] : messages[index + 1]) || {}
 
-      const messageProps: ItemProps = {
+      const messageProps: ItemProps<TMessage> = {
         ...restProps,
         currentMessage: messageItem,
         previousMessage,
         nextMessage,
         position: messageItem.user._id === user._id ? 'right' : 'left',
-        onRefDayWrapper: handleLayoutDayWrapper,
         scrolledY,
         daysPositions,
         listHeight,
       }
 
       return (
-        <Item {...messageProps} />
+        <Item<TMessage> {...messageProps} />
       )
     }
 
     return null
-  }, [props, inverted, handleLayoutDayWrapper, scrolledY, daysPositions, listHeight, user])
+  }, [props, inverted, scrolledY, daysPositions, listHeight, user])
 
   const renderChatEmpty = useCallback(() => {
     if (renderChatEmptyProp)
@@ -275,16 +255,46 @@ function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageC
   const onEndReached = useCallback(() => {
     if (
       infiniteScroll &&
-      hasScrolled &&
       loadEarlier &&
       onLoadEarlier &&
       !isLoadingEarlier &&
       Platform.OS !== 'web'
     )
       onLoadEarlier()
-  }, [hasScrolled, infiniteScroll, loadEarlier, onLoadEarlier, isLoadingEarlier])
+  }, [infiniteScroll, loadEarlier, onLoadEarlier, isLoadingEarlier])
 
   const keyExtractor = useCallback((item: unknown) => (item as TMessage)._id.toString(), [])
+
+  const renderCell = useCallback((props: CellRendererProps<unknown>) => {
+    const handleOnLayout = (event: LayoutChangeEvent) => {
+      const prevMessage = messages[props.index + (inverted ? 1 : -1)]
+      if (prevMessage && isSameDay(props.item as IMessage, prevMessage))
+        return
+
+      const { y, height } = event.nativeEvent.layout
+
+      const newValue = {
+        y,
+        height,
+        createdAt: new Date((props.item as IMessage).createdAt).getTime(),
+      }
+
+      daysPositions.modify(value => {
+        'worklet'
+
+        // @ts-expect-error: https://docs.swmansion.com/react-native-reanimated/docs/core/useSharedValue#remarks
+        value[props.item._id] = newValue
+        return value
+      })
+    }
+
+    return (
+      <Animated.View
+        {...props}
+        onLayout={handleOnLayout}
+      />
+    )
+  }, [daysPositions, messages, inverted])
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: event => {
@@ -294,6 +304,28 @@ function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageC
     },
   }, [handleOnScroll])
 
+  // removes unrendered days positions when messages are added/removed
+  useEffect(() => {
+    Object.keys(daysPositions.value).forEach(key => {
+      const messageIndex = messages.findIndex(m => m._id === key)
+      let shouldRemove = messageIndex === -1
+
+      if (!shouldRemove) {
+        const prevMessage = messages[messageIndex + (inverted ? 1 : -1)]
+        const message = messages[messageIndex]
+        shouldRemove = !!prevMessage && isSameDay(message, prevMessage)
+      }
+
+      if (shouldRemove)
+        daysPositions.modify(value => {
+          'worklet'
+
+          delete value[key]
+          return value
+        })
+    })
+  }, [messages, daysPositions, inverted])
+
   return (
     <View
       style={[
@@ -301,8 +333,8 @@ function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageC
         alignTop ? styles.containerAlignTop : stylesCommon.fill,
       ]}
     >
-      <AnimatedFlashList
-        ref={forwardRef}
+      <AnimatedFlatList
+        ref={forwardRef as React.Ref<FlatList<unknown>>}
         extraData={[extraData, isTyping]}
         keyExtractor={keyExtractor}
         automaticallyAdjustContentInsets={false}
@@ -319,12 +351,12 @@ function MessageContainer<TMessage extends IMessage = IMessage> (props: MessageC
           inverted ? ListFooterComponent : ListHeaderComponent
         }
         onScroll={scrollHandler}
-        scrollEventThrottle={16}
+        scrollEventThrottle={1}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.1}
-        estimatedItemSize={100}
         {...listViewProps}
         onLayout={onLayoutList}
+        CellRendererComponent={renderCell}
       />
       {isScrollToBottomEnabled
         ? renderScrollToBottomWrapper()

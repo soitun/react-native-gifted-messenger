@@ -56,13 +56,18 @@ import styles from './styles'
 dayjs.extend(localizedFormat)
 
 function GiftedChat<TMessage extends IMessage = IMessage> (
-  props: GiftedChatProps
+  props: GiftedChatProps<TMessage>
 ) {
   const {
     messages = [],
     initialText = '',
     isTyping,
-    messageIdGenerator = () => crypto.randomUUID(),
+
+    // "random" function from here: https://stackoverflow.com/a/8084248/3452513
+    // we do not use uuid since it would add extra native dependency (https://www.npmjs.com/package/react-native-get-random-values)
+    // lib's user can decide which algorithm to use and pass it as a prop
+    messageIdGenerator = () => (Math.random() + 1).toString(36).substring(7),
+
     user = {},
     onSend,
     locale = 'en',
@@ -89,9 +94,9 @@ function GiftedChat<TMessage extends IMessage = IMessage> (
   const actionSheetRef = useRef<ActionSheetProviderRef>(null)
 
   const messageContainerRef = useMemo(
-    () => props.messageContainerRef || createRef<AnimatedList>(),
+    () => props.messageContainerRef || createRef<AnimatedList<TMessage>>(),
     [props.messageContainerRef]
-  )
+  ) as RefObject<AnimatedList<TMessage>>
 
   const textInputRef = useMemo(
     () => props.textInputRef || createRef<TextInput>(),
@@ -200,9 +205,9 @@ function GiftedChat<TMessage extends IMessage = IMessage> (
 
     const { messagesContainerStyle, ...messagesContainerProps } = props
 
-    const fragment = (
+    return (
       <View style={[stylesCommon.fill, messagesContainerStyle]}>
-        <MessageContainer
+        <MessageContainer<TMessage>
           {...messagesContainerProps}
           invertibleScrollViewProps={{
             inverted,
@@ -215,8 +220,6 @@ function GiftedChat<TMessage extends IMessage = IMessage> (
         {renderChatFooter?.()}
       </View>
     )
-
-    return fragment
   }, [
     isInitialized,
     isTyping,
@@ -444,10 +447,10 @@ function GiftedChat<TMessage extends IMessage = IMessage> (
   )
 }
 
-function GiftedChatWrapper (props: GiftedChatProps) {
+function GiftedChatWrapper<TMessage extends IMessage = IMessage> (props: GiftedChatProps<TMessage>) {
   return (
     <KeyboardProvider>
-      <GiftedChat {...props} />
+      <GiftedChat<TMessage> {...props} />
     </KeyboardProvider>
   )
 }

@@ -54,7 +54,7 @@
 <p align="center">
   <br/>
   <a href="https://getstream.io/chat/?utm_source=Github&utm_medium=Github_Repo_Content_Ad&utm_content=Developer&utm_campaign=Github_Jan2022_Chat&utm_term=react-native-gifted-chat" target="_blank">
-    <img src="https://i.imgur.com/oU7XYkk.png">
+    <img src="https://raw.githubusercontent.com/FaridSafi/react-native-gifted-chat/master/media/stream-logo.png" height="50">
   </a>
   <br>
   <p align="center">
@@ -99,24 +99,32 @@
 
 # Getting started
 
+## 🚧👷 Important notice
+
+There's currently WIP going on to make the library more performant, modern in terms of chat UI and easier to maintain. If you have any issues, please report them. If you want to contribute, please do so.
+
+The most stable version is `2.6.5`. If you want to use the latest version, please be aware that it's a work in progress.
+
+Readme for this version: [2.6.5 readme](https://github.com/FaridSafi/react-native-gifted-chat/blob/eebab3751fcbe07715135e6e7b2aa3f76a10d8ac/README.md)
+
 ## Installation
 
 ### Install dependencies
 
 Yarn:
 ```bash
-yarn add react-native-gifted-chat @shopify/flash-list react-native-reanimated react-native-keyboard-controller
+yarn add react-native-gifted-chat react-native-reanimated react-native-keyboard-controller
 ```
 
 Npm:
 
 ```bash
-npm install --save react-native-gifted-chat @shopify/flash-list react-native-reanimated react-native-keyboard-controller
+npm install --save react-native-gifted-chat react-native-reanimated react-native-keyboard-controller
 ```
 
 Expo
 ```bash
-npx expo install react-native-gifted-chat @shopify/flash-list react-native-reanimated react-native-keyboard-controller
+npx expo install react-native-gifted-chat react-native-reanimated react-native-keyboard-controller
 ```
 
 ### Non-expo users
@@ -338,7 +346,7 @@ interface QuickReplies {
 
 ## Props
 
-- **`messageContainerRef`** _(FlashList ref)_ - Ref to the flashlist
+- **`messageContainerRef`** _(FlatList ref)_ - Ref to the flatlist
 - **`textInputRef`** _(TextInput ref)_ - Ref to the text input
 - **`messages`** _(Array)_ - Messages to display
 - **`isTyping`** _(Bool)_ - Typing Indicator state; default `false`. If you use`renderFooter` it will override this.
@@ -413,7 +421,7 @@ interface QuickReplies {
  />
 ```
 
-- **`extraData`** _(Object)_ - Extra props for re-rendering FlashList on demand. This will be useful for rendering footer etc.
+- **`extraData`** _(Object)_ - Extra props for re-rendering FlatList on demand. This will be useful for rendering footer etc.
 - **`minComposerHeight`** _(Object)_ - Custom min-height of the composer.
 - **`maxComposerHeight`** _(Object)_ - Custom max height of the composer.
 
